@@ -12,19 +12,15 @@ const Interviewer = () => {
   const vRef = useRef<HTMLVideoElement | null>(null);
   const aRef = useRef<HTMLAudioElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const editorRef=useRef<unknown>();
 
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [roomId, setRoomId] = useState<string>("");
   const [messages, setMessages] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
+  const [value,setValue]=useState("");
   let pc: RTCPeerConnection|null=null;
   
-  const handleEditorDidMount = (editor: any) => {
-    editorRef.current = editor;
-  };
-
   useEffect(() => {
     if (!roomId) return;
 
@@ -88,9 +84,7 @@ const Interviewer = () => {
         setMessages((prevMessages) => [...prevMessages, `Candidate: ${message.text}`]);
       }
       else if (message.type === "editorContent") {
-        if (editorRef.current) {
-          editorRef.current.setValue(message.content);
-        }
+        setValue(message.content)
      }
     }
     return () => {
@@ -204,11 +198,11 @@ const Interviewer = () => {
 
             <div className="w-2/3 h-[290px] rounded-lg p-2 mx-2 border bg-[#38298b] text-white">
             <Editor
-                onMount={handleEditorDidMount}
+                value={value}
                 theme="vs-dark"
                 className="h-full"
-                defaultLanguage="html"
-                defaultValue="<html></html>"
+                language="html"
+                options={{readOnly:true}}
               />
             </div>
             <div className="w-1/3 h-[290px] border rounded-lg p-3  shadow-md">

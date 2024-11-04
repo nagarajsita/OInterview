@@ -86,12 +86,7 @@ wss.on("connection", function connection(ws) {
     }
     
     }
-);
-
-  
-
-  
- 
+    );
   ws.on("close",()=>console.log("connection closed"))
 }
 );

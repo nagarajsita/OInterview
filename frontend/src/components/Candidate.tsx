@@ -120,7 +120,8 @@ const Candidate = () => {
     }
   }
 
-  const onChangeHandler= (value:string,_event:unknown)=>{
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const onChangeHandler= (value:string|undefined,_event : unknown|undefined)=>{
   if(socket && socket.readyState===WebSocket.OPEN){
     const content=value;
     socket.send(JSON.stringify({
@@ -128,6 +129,7 @@ const Candidate = () => {
       roomId: roomId, 
       content: content
     }));
+  }
   }
   
   return (
