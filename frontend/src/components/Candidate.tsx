@@ -9,10 +9,13 @@ const Candidate = () => {
   const vRef = useRef<HTMLVideoElement | null>(null);
   const aRef = useRef<HTMLAudioElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pc = useRef<RTCPeerConnection | null>(null);
+
+
   const [roomId, setRoomId] = useState<string>("");
   const [messages, setMessages] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState<string>("");
-  const pc = useRef<RTCPeerConnection | null>(null);
+  const [isModalOpen,setIsModalOpen]=useState(true);
 
   useEffect(() => {
     const socket1 = new WebSocket("ws://localhost:8080");
@@ -30,7 +33,7 @@ const Candidate = () => {
         if (data.type === "chatMessage") {
           setMessages((prevMessages) => [
             ...prevMessages,
-            `Receiver: ${data.text}`
+            `Interviewer: ${data.text}`
           ]);
         } else if (data.type === "createAnswer" && data.sdp) {
           if (pc.current) {
@@ -55,6 +58,7 @@ const Candidate = () => {
     };
   }, [roomId]);
 
+
   const handleSendMessage = () => {
     if (socket && socket.readyState === WebSocket.OPEN && chatInput) {
       socket.send(
@@ -65,7 +69,9 @@ const Candidate = () => {
     }
   };
 
+
   async function startSendingVideo() {
+    setIsModalOpen(false);
     if (!socket || !roomId) return;
 
     const peerConnection = new RTCPeerConnection();
@@ -102,6 +108,7 @@ const Candidate = () => {
       }
 
       const offer = await peerConnection.createOffer();
+
       await peerConnection.setLocalDescription(offer);
       socket.send(
         JSON.stringify({
@@ -117,23 +124,31 @@ const Candidate = () => {
 
   return (
     <>
-      <div>Interviewee</div>
-      <input
-        type="text"
-        placeholder="Enter Room ID"
-        value={roomId}
-        onChange={(e) => setRoomId(e.target.value)}
-        className="p-2 border rounded mb-4"
-      />
-      <button
-        className="border m-2 p-2"
-        onClick={startSendingVideo}
-        disabled={!roomId}
-      >
-        Send Video
-      </button>
-
-      <div className="flex flex-row justify-evenly items-center border p-5 rounded-lg shadow-lg">
+    {isModalOpen && (
+        <div className="fixed inset-0 bg-blue-100 bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg">
+            <h2 className="text-xl font-bold mb-4">Join Room</h2>
+            <div className="flex mb-4">
+              <input
+                type="text"
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+                placeholder="Enter Room ID"
+                className="border p-2 flex-grow mr-2"
+              />
+              <button
+                onClick={startSendingVideo}
+                className="bg-green-500 text-white px-4 py-2 rounded"
+              >
+                Join
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+     
+{roomId &&
+     (<> <div className="flex flex-row justify-evenly items-center border p-5 rounded-lg shadow-lg">
         {/* Remote Video */}
         <div className="flex flex-col items-center bg-white p-2 rounded-full shadow-md mx-4">
           <div className="relative w-32 h-32">
@@ -178,10 +193,10 @@ const Candidate = () => {
         </div>
       </div>
 
-      <div className="flex flex-row border p-5 rounded-lg shadow-lg bg-white mt-1">
-        <div className="w-2/3 h-[200px] border">code editor</div>
+      <div className="flex flex-row border p-5 rounded-lg shadow-lg mt-1">
+        <div className="w-2/3 h-[290px] rounded-lg p-2 mx-2 border bg-[#38298b] text-white">code editor</div>
         {/* chat  */}
-        <div className="w-1/3 h-[210px] border rounded-lg p-3 shadow-md">
+        <div className="w-1/3 h-[300px] border rounded-lg p-3 shadow-md">
           <div className="flex flex-col h-full">
             <textarea
               rows={10}
@@ -206,7 +221,9 @@ const Candidate = () => {
             </div>
           </div>
         </div>
+    
       </div>
+     </>)}
     </>
   );
 };

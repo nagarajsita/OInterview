@@ -15,7 +15,7 @@ const Interviewer = () => {
   const [messages, setMessages] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
-  let pc: RTCPeerConnection | null = null;
+  let pc: RTCPeerConnection|null=null;
 
   useEffect(() => {
     if (!roomId) return;
@@ -59,7 +59,8 @@ const Interviewer = () => {
           audio: true,
           video: true
         });
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        if(pc)
+       {stream.getTracks().forEach((track) => pc.addTrack(track, stream));}
 
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
@@ -75,13 +76,14 @@ const Interviewer = () => {
         pc.addIceCandidate(new RTCIceCandidate(message.candidate));
       }
       else if(message.type === "chatMessage"){
-        setMessages((prevMessages) => [...prevMessages, `Sender: ${message.text}`]);
+        setMessages((prevMessages) => [...prevMessages, `Candidate: ${message.text}`]);
       }
     };
     return () => {
       socket.close();
     }
   }, [roomId]);
+  
   
   const handleSendMessage = () => {
     if (socket && socket.readyState === WebSocket.OPEN && chatInput) {
@@ -183,10 +185,11 @@ const Interviewer = () => {
           </div>
           {/* code editor and chat */}
           <div className="flex flex-row border p-5 rounded-lg shadow-lg bg-white mt-1">
-            <div className="w-2/3 h-[200px] border">
+
+            <div className="w-2/3 h-[290px] rounded-lg p-2 mx-2 border bg-[#38298b] text-white">
               code editor
             </div>
-            <div className="w-1/3 h-[210px] border rounded-lg p-3 shadow-md">
+            <div className="w-1/3 h-[290px] border rounded-lg p-3  shadow-md">
               <div className="flex flex-col h-full">
                 <textarea
                   rows={10}

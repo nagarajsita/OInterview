@@ -33,7 +33,7 @@ wss.on("connection", function connection(ws) {
             console.log(`Receiver joined room: ${roomId}`);
         }
 
-        ws.send(JSON.stringify({type:"roomJoined", roomId}));
+        // ws.send(JSON.stringify({type:"roomJoined", roomId}));
 
     }
 
