@@ -75,8 +75,20 @@ wss.on("connection", function connection(ws) {
         } else if (ws === room?.receiverSocket && room?.senderSocket) {
           room.senderSocket.send(JSON.stringify({ type: "chatMessage", text }));
         }
-      }
-  });
+    }
+
+    else if (message.type === "editorContent") {
+        const { roomId, content } = message;
+        const room = rooms[roomId];
+        if (ws === room?.senderSocket && room?.receiverSocket) {
+            room.receiverSocket.send(JSON.stringify({ type: "editorContent", content }));
+        }
+    }
+    
+    }
+);
+
+  
 
   
  

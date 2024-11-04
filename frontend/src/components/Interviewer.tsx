@@ -5,10 +5,14 @@ import video from "../assets/video.png";
 import send from "../assets/send.png";
 import { toast, ToastContainer } from "react-toastify";
 import 'react-toastify/dist/ReactToastify.css';
+import Editor from "@monaco-editor/react";
+
+
 const Interviewer = () => {
   const vRef = useRef<HTMLVideoElement | null>(null);
   const aRef = useRef<HTMLAudioElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const editorRef=useRef<unknown>();
 
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [roomId, setRoomId] = useState<string>("");
@@ -16,6 +20,10 @@ const Interviewer = () => {
   const [chatInput, setChatInput] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
   let pc: RTCPeerConnection|null=null;
+  
+  const handleEditorDidMount = (editor: any) => {
+    editorRef.current = editor;
+  };
 
   useEffect(() => {
     if (!roomId) return;
@@ -72,13 +80,19 @@ const Interviewer = () => {
         socket.send(
           JSON.stringify({ type: "createAnswer", roomId, sdp: pc.localDescription })
         );
-      } else if (message.type === "iceCandidate" && pc) {
+      } 
+      else if (message.type === "iceCandidate" && pc) {
         pc.addIceCandidate(new RTCIceCandidate(message.candidate));
       }
       else if(message.type === "chatMessage"){
         setMessages((prevMessages) => [...prevMessages, `Candidate: ${message.text}`]);
       }
-    };
+      else if (message.type === "editorContent") {
+        if (editorRef.current) {
+          editorRef.current.setValue(message.content);
+        }
+     }
+    }
     return () => {
       socket.close();
     }
@@ -92,7 +106,7 @@ const Interviewer = () => {
       setChatInput("");
     }
   }
-
+  
   const handleCreateRoom = () => {
     setIsModalOpen(false);
   }
@@ -107,6 +121,8 @@ const Interviewer = () => {
       console.error('Failed to copy: ', err);
     });
   }
+
+ 
 
   return (
     <div className="p-4">
@@ -187,7 +203,13 @@ const Interviewer = () => {
           <div className="flex flex-row border p-5 rounded-lg shadow-lg bg-white mt-1">
 
             <div className="w-2/3 h-[290px] rounded-lg p-2 mx-2 border bg-[#38298b] text-white">
-              code editor
+            <Editor
+                onMount={handleEditorDidMount}
+                theme="vs-dark"
+                className="h-full"
+                defaultLanguage="html"
+                defaultValue="<html></html>"
+              />
             </div>
             <div className="w-1/3 h-[290px] border rounded-lg p-3  shadow-md">
               <div className="flex flex-col h-full">
