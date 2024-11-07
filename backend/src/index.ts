@@ -43,19 +43,9 @@ wss.on("connection", function connection(ws) {
           room.senderSocket = ws;
           console.log(`Sender joined room: ${roomId}`);
         }
-      } else if (role === "receiver") {
-        if (room.receiverSocket) {
-          // Receiver already in the room
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: "Room is occupied Interviewer",
-            })
-          );
-        } else {
+      } else if (role === "receiver") {       
           room.receiverSocket = ws;
           console.log(`Receiver joined room: ${roomId}`);
-        }
       }
     } else if (message.type === "createOffer") {
       const { roomId, sdp } = message;
