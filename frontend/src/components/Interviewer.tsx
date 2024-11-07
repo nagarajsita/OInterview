@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import hang from "../assets/phone.png";
 import mic from "../assets/mic.png";
-import video from "../assets/video.png";
-import send from "../assets/send.png";
-import { toast, ToastContainer } from "react-toastify";
-import 'react-toastify/dist/ReactToastify.css';
-import Editor from "@monaco-editor/react";
+import micC from "../assets/mic-off.png";
 
+import video from "../assets/video.png";
+import videoC from "../assets/video-off.png";
+
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import Editor from "@monaco-editor/react";
+import Chat from "./Chat";
 
 const Interviewer = () => {
   const vRef = useRef<HTMLVideoElement | null>(null);
@@ -15,28 +18,33 @@ const Interviewer = () => {
 
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [roomId, setRoomId] = useState<string>("");
-  const [messages, setMessages] = useState<string[]>([]);
-  const [chatInput, setChatInput] = useState<string>("");
+
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
-  const [value,setValue]=useState("");
-  let pc: RTCPeerConnection|null=null;
-  
+  const [value, setValue] = useState("");
+  const [audioP,setAudioP]=useState<boolean>(true);
+  const [videoP,setvideoP]=useState<boolean>(true);
+
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+
   useEffect(() => {
     if (!roomId) return;
 
     const socket = new WebSocket("ws://localhost:8080");
     setSocket(socket);
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: "joinRoom", roomId, role: "receiver" }));
+      socket.send(
+        JSON.stringify({ type: "joinRoom", roomId, role: "receiver" })
+      );
     };
 
     socket.onmessage = async (event) => {
       const message = JSON.parse(event.data);
 
       if (message.type === "createOffer") {
-        pc = new RTCPeerConnection();
+        const pc = new RTCPeerConnection();
+        pcRef.current=pc;
         pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
-  
+
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             socket.send(
@@ -56,6 +64,8 @@ const Interviewer = () => {
           }
           if (event.track.kind === "audio" && aRef.current) {
             aRef.current.srcObject = new MediaStream([event.track]);
+            aRef.current.volume=1;
+            aRef.current.play();
           }
         };
 
@@ -63,8 +73,9 @@ const Interviewer = () => {
           audio: true,
           video: true
         });
-        if(pc)
-       {stream.getTracks().forEach((track) => pc.addTrack(track, stream));}
+        if (pc) {
+          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        }
 
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
@@ -74,53 +85,69 @@ const Interviewer = () => {
         await pc.setLocalDescription(answer);
 
         socket.send(
-          JSON.stringify({ type: "createAnswer", roomId, sdp: pc.localDescription })
+          JSON.stringify({
+            type: "createAnswer",
+            roomId,
+            sdp: pc.localDescription
+          })
         );
+      } else if (message.type === "iceCandidate" && pcRef) {
+        if(pcRef.current){
+        pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));}
       } 
-      else if (message.type === "iceCandidate" && pc) {
-        pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-      }
-      else if(message.type === "chatMessage"){
-        setMessages((prevMessages) => [...prevMessages, `Candidate: ${message.text}`]);
-      }
       else if (message.type === "editorContent") {
-        setValue(message.content)
-     }
-    }
+        setValue(message.content);
+      }
+    };
     return () => {
       socket.close();
-    }
+    };
   }, [roomId]);
-  
-  
-  const handleSendMessage = () => {
-    if (socket && socket.readyState === WebSocket.OPEN && chatInput) {
-      socket.send(JSON.stringify({type: "chatMessage", roomId, text: chatInput}))
-      setMessages((prevMessages) => [...prevMessages, `You: ${chatInput}`]);
-      setChatInput("");
-    }
-  }
-  
+
+
+
   const handleCreateRoom = () => {
     setIsModalOpen(false);
-  }
+  };
 
   const generateRandomRoomId = () => {
     const randomString = Math.random().toString(36).substring(2, 10);
     setRoomId(randomString);
-    navigator.clipboard.writeText(randomString).then(() => {
-      toast.success("Room ID copied to clipboard!");
-      handleCreateRoom();
-    }).catch(err => {
-      console.error('Failed to copy: ', err);
-    });
+    navigator.clipboard
+      .writeText(randomString)
+      .then(() => {
+        toast.success("Room ID copied to clipboard!");
+        handleCreateRoom();
+      })
+      .catch((err) => {
+        console.error("Failed to copy: ", err);
+      });
+  };
+
+  const toggleVideo=()=> {
+    if (pcRef.current && pcRef.current.getSenders()) {
+      // console.log("inside if")
+      const videoSender = pcRef.current.getSenders().find((sender) => sender.track?.kind === 'video');
+      if (videoSender?.track) {
+        videoSender.track.enabled = !videoSender.track.enabled;
+        setvideoP(videoSender.track.enabled);
+      }
+    }
   }
 
- 
+  const toggleAudio = () => {
+    if (pcRef.current && pcRef.current.getSenders()) {
+    const audioTrack = pcRef.current?.getSenders().find(sender => sender.track?.kind === "audio");
+    if (audioTrack?.track) {
+      audioTrack.track.enabled = !audioTrack.track.enabled;
+      setAudioP(audioTrack.track.enabled);
+    }
+    }
+  };
 
   return (
     <div className="p-4">
-     <ToastContainer position="top-right"/>
+      <ToastContainer position="top-right" />
       {isModalOpen && (
         <div className="fixed inset-0 bg-blue-100 bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-6 rounded-lg">
@@ -140,14 +167,13 @@ const Interviewer = () => {
                 Generate ID
               </button>
             </div>
-            
           </div>
         </div>
       )}
 
       {roomId && (
         <>
-        <p>Room Id: {roomId}</p>
+          <p>Room Id: {roomId}</p>
           <div className="flex flex-row justify-evenly items-center border p-5 rounded-lg shadow-lg">
             {/* Remote Video */}
             <div className="flex flex-col items-center bg-white p-2 rounded-full shadow-md mx-4">
@@ -157,6 +183,7 @@ const Interviewer = () => {
                   ref={vRef}
                   className="w-full h-full object-cover rounded-full shadow-md"
                 />
+                <audio ref={aRef} autoPlay/>
               </div>
             </div>
 
@@ -165,23 +192,40 @@ const Interviewer = () => {
               <div className="relative w-32 h-32">
                 <video
                   autoPlay
+                  muted
                   ref={localVideoRef}
                   className="w-full h-full object-cover rounded-full shadow-md"
                 />
                 {/* Floating Icons */}
                 <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 ">
-                  <img
+                 {videoP? <img
                     src={video}
                     alt="video"
+                    onClick={toggleVideo}
                     className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                  />
+                    />:<img
+                    src={videoC}
+                    alt="video-close"
+                    onClick={toggleVideo}
+                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />}
                 </div>
+                
                 <div className="absolute top-1/2 -right-8 transform translate-x-1/2 -translate-y-1/2 ">
+                {audioP?
                   <img
                     src={mic}
                     alt="mic"
+                    onClick={toggleAudio}
                     className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                  />
+                  />:
+                  <img
+                  src={micC}
+                  alt="mic-off"
+                  onClick={toggleAudio}
+                  className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                />
+                }
                 </div>
                 <div className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 ">
                   <img
@@ -195,39 +239,21 @@ const Interviewer = () => {
           </div>
           {/* code editor and chat */}
           <div className="flex flex-row border p-5 rounded-lg shadow-lg bg-white mt-1">
-
             <div className="w-2/3 h-[290px] rounded-lg p-2 mx-2 border bg-[#38298b] text-white">
-            <Editor
+              <Editor
                 value={value}
                 theme="vs-dark"
                 className="h-full"
                 language="html"
-                options={{readOnly:true}}
+                options={{
+                  readOnly: true,
+                  "semanticHighlighting.enabled": "configuredByTheme"
+                }}
               />
             </div>
             <div className="w-1/3 h-[290px] border rounded-lg p-3  shadow-md">
               <div className="flex flex-col h-full">
-                <textarea
-                  rows={10}
-                  readOnly
-                  value={messages.join("\n")}
-                  className="resize-none p-2 rounded-lg border border-gray-300 bg-white mb-2 h-3/4 overflow-y-auto"
-                />
-                <div className="flex space-x-2 mt-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Type a message"
-                    className="flex-grow p-2 rounded-lg border border-gray-300"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    className="rounded-lg size-10"
-                  >
-                    <img src={send} alt="send" />
-                  </button>
-                </div>
+                <Chat socket={socket} roomId={roomId} role="receiver" />
               </div>
             </div>
           </div>
