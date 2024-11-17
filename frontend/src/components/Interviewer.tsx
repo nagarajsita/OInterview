@@ -6,6 +6,9 @@ import micC from "../assets/mic-off.png";
 import video from "../assets/video.png";
 import videoC from "../assets/video-off.png";
 
+import record from "../assets/record.svg";
+import recording from "../assets/rec-button.svg";
+
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Editor from "@monaco-editor/react";
@@ -23,7 +26,10 @@ const Interviewer = () => {
   const [value, setValue] = useState("");
   const [audioP,setAudioP]=useState<boolean>(true);
   const [videoP,setvideoP]=useState<boolean>(true);
-
+  const [isRecording,setIsRecording]=useState<boolean>(false);
+  // const [screenChunks,setScreenChunks]=useState<BlobPart[]>([]);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamsRef = useRef<MediaStream[]>([]);
   const pcRef = useRef<RTCPeerConnection | null>(null);
 
   useEffect(() => {
@@ -145,6 +151,121 @@ const Interviewer = () => {
     }
   };
 
+  const cleanupRecording = () => {
+    if (mediaStreamsRef.current) {
+      mediaStreamsRef.current.forEach(stream => {
+        stream.getTracks().forEach(track => track.stop());
+      });
+      mediaStreamsRef.current = [];
+    }
+  };
+
+  //recording functionality
+  const startScreenRecording = async () => {
+    try {
+      // Request screen capture
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { 
+          displaySurface: 'browser',  // Target browser tabs
+          frameRate: 30,
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
+      });
+
+      // Request microphone access
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+      });
+
+      // Get remote participant's audio
+      let remoteAudioTrack = null;
+      if (pcRef.current) {
+        const receivers = pcRef.current.getReceivers();
+        const audioReceiver = receivers.find(receiver => receiver.track.kind === 'audio');
+        if (audioReceiver) {
+          remoteAudioTrack = audioReceiver.track;
+        }
+      }
+
+      // Store streams for cleanup
+      mediaStreamsRef.current = [screenStream, micStream];
+
+      // Combine all audio and video tracks
+      const combinedStream = new MediaStream([
+        ...screenStream.getVideoTracks(),
+        // ...micStream.getAudioTracks(),
+        ...(remoteAudioTrack ? [remoteAudioTrack] : [])
+      ]);
+
+      // Create MediaRecorder with better quality settings
+      const recorder = new MediaRecorder(combinedStream, {
+        mimeType: 'video/webm;codecs=vp8,opus',
+        videoBitsPerSecond: 3000000, // 3 Mbps
+        audioBitsPerSecond: 128000 // 128 kbps
+      });
+
+      const chunks: BlobPart[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        // Create blob and download when recording stops
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `meeting-recording-${timestamp}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        // Cleanup streams
+        cleanupRecording();
+      };
+
+      // Start recording
+      recorder.start(1000); // Create chunks every second
+      screenRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      // Add stop recording handler when user stops screen sharing
+      screenStream.getVideoTracks()[0].onended = () => {
+        stopRecording();
+      };
+
+    } catch (error) {
+      console.error("Error starting recording:", error);
+      toast.error("Failed to start recording. Please make sure you have granted necessary permissions.");
+      cleanupRecording();
+    }
+  };
+
+  const stopRecording = () => {
+    if (screenRecorderRef.current && screenRecorderRef.current.state === "recording") {
+      screenRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      if (screenRecorderRef.current && screenRecorderRef.current.state === "recording") {
+        screenRecorderRef.current.stop();
+      }
+      cleanupRecording();
+    };
+  }, []);
+  
   return (
     <div className="p-4">
       <ToastContainer position="top-right" />
@@ -174,6 +295,24 @@ const Interviewer = () => {
       {roomId && (
         <>
           <p>Room Id: {roomId}</p>
+          <div className="flex justify-center items-center mt-4 space-x-2">
+  {!isRecording ? (
+    <img
+      src={record}
+      alt="Start Screen Recording"
+      className="w-10 h-10 cursor-pointer"
+      onClick={startScreenRecording}
+    />
+  ) : (
+    <img
+      src={recording}
+      alt="Stop Recording"
+      className="w-10 h-10 cursor-pointer"
+      onClick={stopRecording}
+    />
+  )}
+</div>
+
           <div className="flex flex-row justify-evenly items-center border p-5 rounded-lg shadow-lg">
             {/* Remote Video */}
             <div className="flex flex-col items-center bg-white p-2 rounded-full shadow-md mx-4">
