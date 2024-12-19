@@ -8,15 +8,19 @@ import videoC from "../assets/video-off.png";
 import Editor from "@monaco-editor/react";
 import Chat from "./Chat";
 
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { useNavigate } from "react-router-dom";
+
 const Candidate = () => {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const vRef = useRef<HTMLVideoElement | null>(null);
   const aRef = useRef<HTMLAudioElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const [audioP,setAudioP]=useState<boolean>(true);
-  const [videoP,setvideoP]=useState<boolean>(true);
-
+  const [audioP, setAudioP] = useState<boolean>(true);
+  const [videoP, setvideoP] = useState<boolean>(true);
+  const navigate=useNavigate();
   const [roomId, setRoomId] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [language, setLanguage] = useState<string>("javascript");
@@ -33,16 +37,91 @@ const Candidate = () => {
     { label: "Dark", value: "vs-dark" }
   ];
 
+  const cleanupConnection = () => {
+    if (localVideoRef.current?.srcObject instanceof MediaStream) {
+      localVideoRef.current.srcObject
+        .getTracks()
+        .forEach((track) => track.stop());
+    }
+    if (vRef.current?.srcObject instanceof MediaStream) {
+      vRef.current.srcObject.getTracks().forEach((track) => track.stop());
+    }
+    if (aRef.current?.srcObject instanceof MediaStream) {
+      aRef.current.srcObject.getTracks().forEach((track) => track.stop());
+    }
+
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+
+    localVideoRef.current = null;
+    vRef.current = null;
+    aRef.current = null;
+  };
+
+  const handleHangUp = () => {
+    toast.info(
+      ({ closeToast }) => (
+        <div>
+          <p className="font-medium">Leave Interview Session?</p>
+          <div className="flex justify-end mt-2">
+            <button
+              className="bg-red-500 text-white px-3 py-1 rounded mr-2 hover:bg-red-600"
+              onClick={() => {
+                confirmHangUp();
+                closeToast();
+              }}
+            >
+              Leave Session
+            </button>
+            <button
+              className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+              onClick={closeToast}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        autoClose: false,
+        closeButton: false,
+        position: "top-center"
+      }
+    );
+  };
+
+  const confirmHangUp = () => {
+    if (socket) {
+      socket.send(
+        JSON.stringify({
+          type: "terminateRoom",
+          roomId,
+          role: "receiver"
+        })
+      );
+    }
+    cleanupConnection();
+    if (socket) {
+      socket.close();
+    }
+    toast.success("Interview session ended successfully");
+    setRoomId("");
+    setIsModalOpen(true);
+    navigate("/"); 
+  };
+
   useEffect(() => {
     const socket1 = new WebSocket("ws://localhost:8080");
     setSocket(socket1);
 
     socket1.onopen = () => {
-      if(roomId){
-      socket1.send(
-        JSON.stringify({ type: "joinRoom", roomId, role: "sender" })
-      );
-    }
+      if (roomId) {
+        socket1.send(
+          JSON.stringify({ type: "joinRoom", roomId, role: "sender" })
+        );
+      }
     };
 
     socket1.onmessage = async (event) => {
@@ -60,9 +139,17 @@ const Candidate = () => {
               new RTCIceCandidate(data.candidate)
             );
           }
-        }
-        else if(data.type === "error"){
-         alert(data.message)
+        } else if (data.type === "error") {
+          alert(data.message);
+        } else if(data.type === "MeetingEnded"){
+          toast.warning("Interview ended");
+          setRoomId("");
+          pcRef.current?.close();
+          pcRef.current=null
+          vRef.current=null
+          localVideoRef.current=null
+          alert("Meeting ended")
+          setTimeout(()=>navigate("/"),5000);
         }
       } catch (error) {
         console.error("Error handling WebSocket message:", error);
@@ -72,10 +159,10 @@ const Candidate = () => {
     return () => {
       socket1.close();
     };
-  }, [roomId]);
+  }, [roomId,navigate]);
 
   async function startSendingVideo() {
-    if(!roomId) return
+    if (!roomId) return;
     setIsModalOpen(false);
     if (!socket) return;
 
@@ -146,28 +233,35 @@ const Candidate = () => {
     }
   };
 
-  const toggleVideo=()=> {
+  const toggleVideo = () => {
     if (pcRef.current && pcRef.current.getSenders()) {
       // console.log("inside if")
-      const videoSender = pcRef.current.getSenders().find((sender) => sender.track?.kind === 'video');
+      const videoSender = pcRef.current
+        .getSenders()
+        .find((sender) => sender.track?.kind === "video");
       if (videoSender?.track) {
         videoSender.track.enabled = !videoSender.track.enabled;
         setvideoP(videoSender.track.enabled);
       }
     }
-  }
+  };
 
   const toggleAudio = () => {
     if (pcRef.current && pcRef.current.getSenders()) {
-    const audioTrack = pcRef.current?.getSenders().find(sender => sender.track?.kind === "audio");
-    if (audioTrack?.track) {
-      audioTrack.track.enabled = !audioTrack.track.enabled;
-      setAudioP(audioTrack.track.enabled);
-    }
+      const audioTrack = pcRef.current
+        ?.getSenders()
+        .find((sender) => sender.track?.kind === "audio");
+      if (audioTrack?.track) {
+        audioTrack.track.enabled = !audioTrack.track.enabled;
+        setAudioP(audioTrack.track.enabled);
+      }
     }
   };
+
   return (
+    
     <>
+    <ToastContainer position="top-right" />
       {isModalOpen && (
         <div className="fixed z-50 inset-0 bg-blue-100 bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-6 rounded-lg">
@@ -204,8 +298,8 @@ const Candidate = () => {
                   ref={vRef}
                   className="w-full h-full object-cover rounded-full shadow-md"
                 />
-                <audio ref={aRef} autoPlay/>
-                </div>
+                <audio ref={aRef} autoPlay />
+              </div>
             </div>
 
             {/* Local Video */}
@@ -218,40 +312,46 @@ const Candidate = () => {
                   className="w-full h-full object-cover rounded-full shadow-md"
                 />
                 <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 ">
-                {videoP? <img
-                    src={video}
-                    alt="video"
-                    onClick={toggleVideo}
-                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                    />:<img
-                    src={videoC}
-                    alt="video-close"
-                    onClick={toggleVideo}
-                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                    />}
+                  {videoP ? (
+                    <img
+                      src={video}
+                      alt="video"
+                      onClick={toggleVideo}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  ) : (
+                    <img
+                      src={videoC}
+                      alt="video-close"
+                      onClick={toggleVideo}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  )}
                 </div>
-                
+
                 <div className="absolute top-1/2 -right-8 transform translate-x-1/2 -translate-y-1/2 ">
-                {audioP?
-                  <img
-                    src={mic}
-                    alt="mic"
-                    onClick={toggleAudio}
-                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                  />:
-                  <img
-                  src={micC}
-                  alt="mic-off"
-                  onClick={toggleAudio}
-                  className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                />
-                }
+                  {audioP ? (
+                    <img
+                      src={mic}
+                      alt="mic"
+                      onClick={toggleAudio}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  ) : (
+                    <img
+                      src={micC}
+                      alt="mic-off"
+                      onClick={toggleAudio}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  )}
                 </div>
                 <div className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 ">
                   <img
                     src={hang}
                     alt="hang-up"
                     className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    onClick={handleHangUp}
                   />
                 </div>
               </div>

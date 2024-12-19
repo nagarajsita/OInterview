@@ -13,6 +13,7 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Editor from "@monaco-editor/react";
 import Chat from "./Chat";
+import { useNavigate } from "react-router-dom";
 
 const Interviewer = () => {
   const vRef = useRef<HTMLVideoElement | null>(null);
@@ -24,17 +25,110 @@ const Interviewer = () => {
 
   const [isModalOpen, setIsModalOpen] = useState<boolean>(true);
   const [value, setValue] = useState("");
-  const [audioP,setAudioP]=useState<boolean>(true);
-  const [videoP,setvideoP]=useState<boolean>(true);
-  const [isRecording,setIsRecording]=useState<boolean>(false);
-  // const [screenChunks,setScreenChunks]=useState<BlobPart[]>([]);
+  const [audioP, setAudioP] = useState<boolean>(true);
+  const [videoP, setvideoP] = useState<boolean>(true);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
   const screenRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamsRef = useRef<MediaStream[]>([]);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const navigate = useNavigate();
+
+  //cleanup funcyion for connections
+  const cleanupConnection = () => {
+    // Stop all tracks from local stream
+    if (localVideoRef.current?.srcObject instanceof MediaStream) {
+      localVideoRef.current.srcObject
+        .getTracks()
+        .forEach((track) => track.stop());
+    }
+    // Stop all tracks from remote stream
+    if (vRef.current?.srcObject instanceof MediaStream) {
+      vRef.current.srcObject.getTracks().forEach((track) => track.stop());
+    }
+    if (aRef.current?.srcObject instanceof MediaStream) {
+      aRef.current.srcObject.getTracks().forEach((track) => track.stop());
+    }
+    // Close peer connection
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    // Stop recording if active
+    if (
+      screenRecorderRef.current &&
+      screenRecorderRef.current.state === "recording"
+    ) {
+      stopRecording();
+    }
+    // Clean up media streams
+    cleanupRecording();
+    // Clear references
+    localVideoRef.current = null;
+    vRef.current = null;
+    aRef.current = null;
+  };
+
+  const handleHangUp = () => {
+    toast.info(
+      ({ closeToast }) => (
+        <div>
+          <p className="font-medium">End Interview Session?</p>
+          <p className="text-sm text-gray-600 mt-1">
+            This will end the session for all participants.
+          </p>
+          <div className="flex justify-end mt-2">
+            <button
+              className="bg-red-500 text-white px-3 py-1 rounded mr-2 hover:bg-red-600"
+              onClick={() => {
+                confirmHangUp();
+                closeToast();
+              }}
+            >
+              End Session
+            </button>
+            <button
+              className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+              onClick={closeToast}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        autoClose: false,
+        closeButton: false,
+        position: "top-center"
+      }
+    );
+  };
+
+  const confirmHangUp = () => {
+    if (socket) {
+      socket.send(
+        JSON.stringify({
+          type: "terminateRoom",
+          roomId,
+          role: "receiver"
+        })
+      );
+    }
+    cleanupConnection();
+    if (socket) {
+      socket.close();
+    }
+    toast.success("Interview session ended successfully");
+
+    setRoomId("");
+    pcRef.current?.close()
+    pcRef.current=null;
+    vRef.current=null
+    localVideoRef.current=null
+    navigate("/"); 
+  };
 
   useEffect(() => {
     if (!roomId) return;
-
     const socket = new WebSocket("ws://localhost:8080");
     setSocket(socket);
     socket.onopen = () => {
@@ -42,13 +136,12 @@ const Interviewer = () => {
         JSON.stringify({ type: "joinRoom", roomId, role: "receiver" })
       );
     };
-
     socket.onmessage = async (event) => {
       const message = JSON.parse(event.data);
 
       if (message.type === "createOffer") {
         const pc = new RTCPeerConnection();
-        pcRef.current=pc;
+        pcRef.current = pc;
         pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
 
         pc.onicecandidate = (event) => {
@@ -70,7 +163,7 @@ const Interviewer = () => {
           }
           if (event.track.kind === "audio" && aRef.current) {
             aRef.current.srcObject = new MediaStream([event.track]);
-            aRef.current.volume=1;
+            aRef.current.volume = 1;
             aRef.current.play();
           }
         };
@@ -98,19 +191,19 @@ const Interviewer = () => {
           })
         );
       } else if (message.type === "iceCandidate" && pcRef) {
-        if(pcRef.current){
-        pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));}
-      } 
-      else if (message.type === "editorContent") {
+        if (pcRef.current) {
+          pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
+        }
+      } else if (message.type === "editorContent") {
         setValue(message.content);
+      } else if (message.type === "participantLeft"){
+        toast.warn("Candidate left the meeting")
       }
     };
     return () => {
       socket.close();
     };
   }, [roomId]);
-
-
 
   const handleCreateRoom = () => {
     setIsModalOpen(false);
@@ -130,44 +223,47 @@ const Interviewer = () => {
       });
   };
 
-  const toggleVideo=()=> {
+  const toggleVideo = () => {
     if (pcRef.current && pcRef.current.getSenders()) {
       // console.log("inside if")
-      const videoSender = pcRef.current.getSenders().find((sender) => sender.track?.kind === 'video');
+      const videoSender = pcRef.current
+        .getSenders()
+        .find((sender) => sender.track?.kind === "video");
       if (videoSender?.track) {
         videoSender.track.enabled = !videoSender.track.enabled;
         setvideoP(videoSender.track.enabled);
       }
     }
-  }
+  };
 
   const toggleAudio = () => {
     if (pcRef.current && pcRef.current.getSenders()) {
-    const audioTrack = pcRef.current?.getSenders().find(sender => sender.track?.kind === "audio");
-    if (audioTrack?.track) {
-      audioTrack.track.enabled = !audioTrack.track.enabled;
-      setAudioP(audioTrack.track.enabled);
-    }
+      const audioTrack = pcRef.current
+        ?.getSenders()
+        .find((sender) => sender.track?.kind === "audio");
+      if (audioTrack?.track) {
+        audioTrack.track.enabled = !audioTrack.track.enabled;
+        setAudioP(audioTrack.track.enabled);
+      }
     }
   };
 
   const cleanupRecording = () => {
     if (mediaStreamsRef.current) {
-      mediaStreamsRef.current.forEach(stream => {
-        stream.getTracks().forEach(track => track.stop());
+      mediaStreamsRef.current.forEach((stream) => {
+        stream.getTracks().forEach((track) => track.stop());
       });
       mediaStreamsRef.current = [];
     }
   };
 
-  //recording functionality
+  //recording
   const startScreenRecording = async () => {
     try {
-      // Request screen capture
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { 
-          displaySurface: 'browser',  // Target browser tabs
-          frameRate: 30,
+        video: {
+          displaySurface: "browser", 
+          frameRate: 30
         },
         audio: {
           echoCancellation: true,
@@ -175,36 +271,31 @@ const Interviewer = () => {
           sampleRate: 44100
         }
       });
-
-      // Request microphone access
+      // microphone access
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: false
       });
-
-      // Get remote participant's audio
+      // remote participant's audio
       let remoteAudioTrack = null;
       if (pcRef.current) {
         const receivers = pcRef.current.getReceivers();
-        const audioReceiver = receivers.find(receiver => receiver.track.kind === 'audio');
+        const audioReceiver = receivers.find(
+          (receiver) => receiver.track.kind === "audio"
+        );
         if (audioReceiver) {
           remoteAudioTrack = audioReceiver.track;
         }
       }
-
-      // Store streams for cleanup
       mediaStreamsRef.current = [screenStream, micStream];
-
-      // Combine all audio and video tracks
+      // Combine
       const combinedStream = new MediaStream([
         ...screenStream.getVideoTracks(),
-        // ...micStream.getAudioTracks(),
         ...(remoteAudioTrack ? [remoteAudioTrack] : [])
       ]);
 
-      // Create MediaRecorder with better quality settings
       const recorder = new MediaRecorder(combinedStream, {
-        mimeType: 'video/webm;codecs=vp8,opus',
+        mimeType: "video/webm;codecs=vp8,opus",
         videoBitsPerSecond: 3000000, // 3 Mbps
         audioBitsPerSecond: 128000 // 128 kbps
       });
@@ -218,16 +309,14 @@ const Interviewer = () => {
       };
 
       recorder.onstop = () => {
-        // Create blob and download when recording stops
-        const blob = new Blob(chunks, { type: 'video/webm' });
+        const blob = new Blob(chunks, { type: "video/webm" });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const a = document.createElement("a");
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         a.href = url;
         a.download = `meeting-recording-${timestamp}.webm`;
         a.click();
         URL.revokeObjectURL(url);
-        
         // Cleanup streams
         cleanupRecording();
       };
@@ -241,31 +330,37 @@ const Interviewer = () => {
       screenStream.getVideoTracks()[0].onended = () => {
         stopRecording();
       };
-
     } catch (error) {
       console.error("Error starting recording:", error);
-      toast.error("Failed to start recording. Please make sure you have granted necessary permissions.");
+      toast.error(
+        "Failed to start recording. Please make sure you have granted necessary permissions."
+      );
       cleanupRecording();
     }
   };
 
   const stopRecording = () => {
-    if (screenRecorderRef.current && screenRecorderRef.current.state === "recording") {
+    if (
+      screenRecorderRef.current &&
+      screenRecorderRef.current.state === "recording"
+    ) {
       screenRecorderRef.current.stop();
       setIsRecording(false);
     }
   };
 
-  // Cleanup on component unmount
   useEffect(() => {
     return () => {
-      if (screenRecorderRef.current && screenRecorderRef.current.state === "recording") {
+      if (
+        screenRecorderRef.current &&
+        screenRecorderRef.current.state === "recording"
+      ) {
         screenRecorderRef.current.stop();
       }
       cleanupRecording();
     };
   }, []);
-  
+
   return (
     <div className="p-4">
       <ToastContainer position="top-right" />
@@ -273,17 +368,17 @@ const Interviewer = () => {
         <div className="fixed inset-0 bg-blue-100 bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-6 rounded-lg">
             <h2 className="text-xl font-bold mb-4">Create a Room</h2>
-            <div className="flex mb-4">
-              <input
+            <div className="flex mb-4 px-20">
+              {/* <input
                 type="text"
                 value={roomId}
                 onChange={(e) => setRoomId(e.target.value)}
                 placeholder="Enter Room ID"
                 className="border p-2 flex-grow mr-2"
-              />
+              /> */}
               <button
                 onClick={generateRandomRoomId}
-                className="bg-green-500 text-white px-4 py-2 rounded"
+                className="bg-green-500 text-white px-10 py-2 rounded"
               >
                 Generate ID
               </button>
@@ -296,22 +391,22 @@ const Interviewer = () => {
         <>
           <p>Room Id: {roomId}</p>
           <div className="flex justify-center items-center mt-4 space-x-2">
-  {!isRecording ? (
-    <img
-      src={record}
-      alt="Start Screen Recording"
-      className="w-10 h-10 cursor-pointer"
-      onClick={startScreenRecording}
-    />
-  ) : (
-    <img
-      src={recording}
-      alt="Stop Recording"
-      className="w-10 h-10 cursor-pointer"
-      onClick={stopRecording}
-    />
-  )}
-</div>
+            {!isRecording ? (
+              <img
+                src={record}
+                alt="Start Screen Recording"
+                className="w-10 h-10 cursor-pointer"
+                onClick={startScreenRecording}
+              />
+            ) : (
+              <img
+                src={recording}
+                alt="Stop Recording"
+                className="w-10 h-10 cursor-pointer"
+                onClick={stopRecording}
+              />
+            )}
+          </div>
 
           <div className="flex flex-row justify-evenly items-center border p-5 rounded-lg shadow-lg">
             {/* Remote Video */}
@@ -322,7 +417,7 @@ const Interviewer = () => {
                   ref={vRef}
                   className="w-full h-full object-cover rounded-full shadow-md"
                 />
-                <audio ref={aRef} autoPlay/>
+                <audio ref={aRef} autoPlay />
               </div>
             </div>
 
@@ -335,42 +430,49 @@ const Interviewer = () => {
                   ref={localVideoRef}
                   className="w-full h-full object-cover rounded-full shadow-md"
                 />
+
                 {/* Floating Icons */}
                 <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 ">
-                 {videoP? <img
-                    src={video}
-                    alt="video"
-                    onClick={toggleVideo}
-                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                    />:<img
-                    src={videoC}
-                    alt="video-close"
-                    onClick={toggleVideo}
-                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                    />}
+                  {videoP ? (
+                    <img
+                      src={video}
+                      alt="video"
+                      onClick={toggleVideo}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  ) : (
+                    <img
+                      src={videoC}
+                      alt="video-close"
+                      onClick={toggleVideo}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  )}
                 </div>
-                
+
                 <div className="absolute top-1/2 -right-8 transform translate-x-1/2 -translate-y-1/2 ">
-                {audioP?
-                  <img
-                    src={mic}
-                    alt="mic"
-                    onClick={toggleAudio}
-                    className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                  />:
-                  <img
-                  src={micC}
-                  alt="mic-off"
-                  onClick={toggleAudio}
-                  className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
-                />
-                }
+                  {audioP ? (
+                    <img
+                      src={mic}
+                      alt="mic"
+                      onClick={toggleAudio}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  ) : (
+                    <img
+                      src={micC}
+                      alt="mic-off"
+                      onClick={toggleAudio}
+                      className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    />
+                  )}
                 </div>
                 <div className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 ">
                   <img
                     src={hang}
                     alt="hang-up"
                     className="w-8 h-8 p-1 rounded-full shadow-lg bg-white"
+                    onClick={handleHangUp}
                   />
                 </div>
               </div>
