@@ -1,6 +1,20 @@
 import { WebSocket, WebSocketServer } from "ws";
+import https from "https";
+import fs from "fs";
 
-const wss = new WebSocketServer({ port: 8080 });
+// Load SSL certificates
+const sslOptions = {
+  key: fs.readFileSync("./ssl/key.pem"), // Path to your private key
+  cert: fs.readFileSync("./ssl/cert.pem"), // Path to your certificate
+};
+
+// Create an HTTPS server
+const server = https.createServer(sslOptions, (req, res) => {
+  res.writeHead(200);
+  res.end("WebSocket Server is running securely");
+});
+
+const wss = new WebSocketServer({ server:server });
 
 interface Room {
   senderSocket: WebSocket | null;
@@ -62,11 +76,11 @@ wss.on("connection", function connection(ws) {
         console.log(`Interviewer joined room: ${roomId}`);
       }
     } else if (message.type === "createOffer") {
-      const { roomId, sdp } = message;
+      const { roomId, sdp, r_link } = message;
       const room = rooms[roomId];
       if (room?.receiverSocket) {
         room?.receiverSocket?.send(
-          JSON.stringify({ type: "createOffer", sdp: sdp })
+          JSON.stringify({ type: "createOffer", sdp: sdp, r_link})
         );
         console.log(`Offer sent to receiver in room: ${roomId}`);
       }
@@ -151,3 +165,7 @@ wss.on("connection", function connection(ws) {
   
   console.log("Connection closed");});
 });
+
+server.listen(8080,()=>{
+  console.log("WebSocket server running securely on https://localhost:8080");
+})

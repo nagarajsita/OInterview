@@ -113,7 +113,7 @@ const Candidate = () => {
   };
 
   useEffect(() => {
-    const socket1 = new WebSocket("ws://localhost:8080");
+    const socket1 = new WebSocket("wss://localhost:8080");
     setSocket(socket1);
 
     socket1.onopen = () => {
@@ -166,7 +166,12 @@ const Candidate = () => {
     setIsModalOpen(false);
     if (!socket) return;
 
-    const peerConnection = new RTCPeerConnection();
+    const peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }, // Public STUN server
+       
+      ]
+    });
     pcRef.current = peerConnection;
 
     peerConnection.onicecandidate = (event) => {

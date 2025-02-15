@@ -4,8 +4,9 @@ import { Link } from "react-router-dom";
 
 const Hero = () => {
   return (
-    <div className="flex flex-row gap-5 justify-evenly h-96 items-center">
-     
+    
+    <div className="flex flex-row gap-5 justify-evenly h-96 items-center">     
+      
       <div className="flex flex-col justify-center items-center">
         <p className="text-lg">Join Room</p>
       <Link to={"/candidate"}>

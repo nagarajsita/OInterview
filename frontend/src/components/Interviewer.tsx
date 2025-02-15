@@ -129,7 +129,7 @@ const Interviewer = () => {
 
   useEffect(() => {
     if (!roomId) return;
-    const socket = new WebSocket("ws://localhost:8080");
+    const socket = new WebSocket("wss://localhost:8080");
     setSocket(socket);
     socket.onopen = () => {
       socket.send(
@@ -140,7 +140,12 @@ const Interviewer = () => {
       const message = JSON.parse(event.data);
 
       if (message.type === "createOffer") {
-        const pc = new RTCPeerConnection();
+        const pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" }, // Public STUN server
+           
+          ]
+        });
         pcRef.current = pc;
         pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
 
